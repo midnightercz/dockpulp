@@ -584,7 +584,7 @@ class Pulp(object):
             self._cleanup(os.path.dirname(self._request.certificate))
 
     def push_tar_to_pulp(self, repos_tags_mapping, tarfile, missing_repos_info={},
-                         repo_prefix="redhat-"):
+                         repo_prefix="redhat-", wait=False):
         """
         repos_tags_mapping is mapping between repo-ids, registry-ids and tags
         which should be applied to those repos, expected structure:
@@ -634,6 +634,7 @@ class Pulp(object):
                 self.copy(repo, img)
             self.updateRepo(repo, {"tag": "%s:%s" % (",".join(repo_conf["tags"]),
                                                          top_layer)})
+        return self.crane(mod_repos_tags_mapping.keys(), wait=wait)
 
     def remove(self, repo, img):
         """

@@ -446,7 +446,7 @@ def do_push_to_pulp(bopts, bargs):
     p.push_tar_to_pulp(repo_tag_mapping, tar_file,
                        missing_repos_info=missing_repos_info)
 
-    p.crane([repo])
+    p.crane([repo], wait=True)
 
 def do_release(bopts, bargs):
     """
