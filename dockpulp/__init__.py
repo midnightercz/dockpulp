@@ -76,7 +76,9 @@ class RequestsHttpCaller(object):
         log.debug('remote host is %s' % self.url)
         c = getattr(requests, meth)
         url = self.url + api
-        if self.certificate:
+        if self.certificate and\
+           os.path.exists(self.certificate) and\
+           os.path.exists(self.key):
             kwargs['cert'] = (self.certificate, self.key)
         kwargs['verify'] = False # TODO: figure out when to make True
         log.debug('calling %s on %s' % (meth, url))
@@ -87,7 +89,9 @@ class RequestsHttpCaller(object):
         try:
             answer = c(url, **kwargs)
         except requests.exceptions.SSLError, se:
-            raise errors.DockPulpLoginError('Expired or bad certificate, please re-login')
+            os.remove(self.certificate)
+            os.remove(self.key)
+            raise errors.DockPulpLoginError('Expired or bad certificate, please re-login (%s)' % str(se))
         try:
             r = json.loads(answer.content)
             log.debug('raw response data:')
@@ -149,10 +153,14 @@ class Pulp(object):
     def _set_cert(self, attrs):
         for key, cert_path in attrs:
             if self.env == key:
-                self.certificate = os.path.join(os.path.expanduser(cert_path),
-                                                self.AUTH_CER_FILE)
-                self.key = os.path.join(os.path.expanduser(cert_path),
-                                        self.AUTH_KEY_FILE)
+                if cert_path is not None:
+                    self.certificate = os.path.join(os.path.expanduser(cert_path),
+                                                    self.AUTH_CER_FILE)
+                    self.key = os.path.join(os.path.expanduser(cert_path),
+                                            self.AUTH_KEY_FILE)
+                else:
+                    self.certificate = None
+                    self.key = None
 
     def _set_env_attr(self, attrs):
         for key, val in attrs:
@@ -558,21 +566,46 @@ class Pulp(object):
         """
         log.info('logging in as %s' % user)
         log.info('certificate %s' % self._request.certificate)
-        if not self._request.certificate or\
+
+        # login only if there no certificate or certificate doesn't exist
+        do_login = False
+
+        if not self._request.certificate:
+            do_login = True
+
+        if self._request.certificate and\
            not os.path.exists(self._request.certificate):
+            do_login = True
+
+        if do_login:
             blob = self._post('/pulp/api/v2/actions/login/',
                 auth=(user, password))
-            sessiondir = tempfile.mkdtemp()
-            log.info('session info saved in %s' % sessiondir)
+
+            self.sessiondir = tempfile.mkdtemp()
+            log.info('session info saved in %s' % self.sessiondir)
             for part in ('certificate', 'key'):
-                # save the cert and key for future calls
-                f = os.path.join(sessiondir, 'pulp.' + part[:3])
+                # save the cert and key for future calls - to session location
+                f = os.path.join(self.sessiondir, 'pulp.' + part[:3])
                 fd = open(f, 'w')
                 fd.write(blob[part])
                 fd.close()
-                setattr(self._request, part, f)
-                setattr(self, part, f)
-            atexit.register(self._cleanup, sessiondir)
+
+                # not there's no certificate set path to cert as path to
+                # session dir
+                if not getattr(self._request, part):
+                    setattr(self._request, part, f)
+                    setattr(self, part, f)
+                # if there's certificate and only doesn't exit
+                # copy cretificate/key to specified location
+                elif getattr(self._request, part) and\
+                   not os.path.exists(getattr(self._request, part)):
+
+                    creddir = os.path.dirname(self.certificate)
+                    if not os.path.exists(creddir):
+                        os.makedirs(creddir)
+                    shutil.copy(f, os.path.join(creddir, "pulp." + part[:3]))
+
+            atexit.register(self._cleanup, self.sessiondir)
 
     def logout(self):
         """

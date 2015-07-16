@@ -382,12 +382,7 @@ def do_login(bopts, bargs):
         parser.error('You should provide a password too')
     p = dockpulp.Pulp(env=bopts.server, config_file=bopts.config_file)
     p.login(opts.username, opts.password)
-    creddir = os.path.expanduser('~/.pulp')
-    if not os.path.exists(creddir):
-        os.makedirs(creddir)
-    shutil.copy(p.certificate, creddir)
-    shutil.copy(p.key, creddir)
-    log.info('Credentials stored in %s.' % creddir)
+    log.info('Credentials stored in %s.' % os.path.dirname(p.certificate))
     log.info('You may run commands without a user/password now.')
 
 def do_json(bopts, bargs):
